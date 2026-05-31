@@ -63,7 +63,6 @@ def error_exit(message):
     sys.exit(1)
 
 def get_default_filename():
-    """Fallback: Mendapatkan tanggal hari ini jika data kosong."""
     now = datetime.datetime.now()
     months = {
         1: "JAN", 2: "FEB", 3: "MAR", 4: "APR", 5: "MEI", 6: "JUN",
@@ -73,11 +72,6 @@ def get_default_filename():
     return f"XML-{now.day:02d}-{months[now.month]}-{year_short}"
 
 def generate_filename_from_data(date_val):
-    """
-    Membuat nama file dari data Tanggal Faktur (Kolom B).
-    Input: datetime object atau string 'dd/mm/yyyy'.
-    Output: string 'XML-DD-MMM-YY'.
-    """
     dt = None
     
     try:
@@ -104,7 +98,6 @@ def generate_filename_from_data(date_val):
         return None
 
 def clean_id_tku_penjual(raw_data):
-    """Fix ID TKU jadi Text."""
     cleaned_data = []
     for row in raw_data:
         row_list = list(row)
@@ -119,7 +112,6 @@ def clean_id_tku_penjual(raw_data):
     return cleaned_data
 
 def force_harga_satuan_to_number(raw_data):
-    """Fix Harga Satuan jadi Float/Number."""
     cleaned_data = []
     for row in raw_data:
         row_list = list(row)
