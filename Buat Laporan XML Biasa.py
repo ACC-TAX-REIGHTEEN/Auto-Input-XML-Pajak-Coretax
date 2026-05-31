@@ -54,7 +54,7 @@ TEMP_FILES_TO_REMOVE = [
 ]
 
 def log(message):
-    print(f"[PROCESS] {message}")
+    print(f"--> {message}")
 
 def error_exit(message):
     print(f"\n[ERROR] {message}")
