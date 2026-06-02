@@ -30,7 +30,6 @@ def perbaiki_format_tanggal(nama_file, nama_sheet, nama_kolom):
         for row in range(2, ws.max_row + 1):
             cell = ws.cell(row=row, column=kolom_target_index)
             nilai_asli = cell.value
-"
             if isinstance(nilai_asli, str):
                 try:
                     dt_object = datetime.strptime(nilai_asli, '%d/%m/%Y')
