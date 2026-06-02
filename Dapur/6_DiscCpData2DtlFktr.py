@@ -48,7 +48,6 @@ def main():
         return ""
     
     df_result['Kode Barang Jasa'] = df_result['Nama Barang/Jasa'].apply(get_kode_barang)
-)
     def get_barang_jasa_group(kode_barang):
         kode_str = str(kode_barang)
         if kode_str in helper_a:
