@@ -1,0 +1,5 @@
+pandas
+openpyxl
+xlwings
+xlsxwriter
+requests
