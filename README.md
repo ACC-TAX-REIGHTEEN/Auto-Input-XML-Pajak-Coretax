@@ -1,4 +1,3 @@
-# Auto-Input-XML-Pajak-Coretax
 # 🧾 Auto-Input XML Pajak Coretax
 
 **Versi:** 1.2.3  
