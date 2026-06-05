@@ -20,7 +20,8 @@ def main():
 
     print("--> Sedang memuat file Helper...")
     helpers_kode = {
-    	'160100': load_helper_list('Helper_160100.txt'),
+    	'000000': load_helper_list('Helper_000000.txt'),
+        '160100': load_helper_list('Helper_160100.txt'),
     	'200104': load_helper_list('Helper_200104.txt'),
         '340300': load_helper_list('Helper_340300.txt'),
         '401100': load_helper_list('Helper_401100.txt'),
