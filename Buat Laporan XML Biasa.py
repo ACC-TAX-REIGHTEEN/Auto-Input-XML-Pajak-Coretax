@@ -32,7 +32,7 @@ REQUIRED_DAPUR_FILES = [
     "Helper_Del.txt",
     "KTP.txt",
     "KTP-OTH.txt",
-    "TEMPLATE_1.3.25.xlsx"
+    "Template_v.1.6.1.xlsx"
 ]
 
 EXECUTION_ORDER = [
@@ -187,7 +187,7 @@ def main():
         if not os.path.exists(source_file):
             error_exit("File 'MkNwFile_temp.xlsx' tidak terbentuk setelah proses.")
 
-        template_ori = os.path.join(dapur_path, "TEMPLATE_1.3.25.xlsx")
+        template_ori = os.path.join(dapur_path, "Template_v.1.6.1.xlsx")
         template_temp = os.path.join(dapur_path, "TEMPLATE_temp.xlsx")
         
         try:
