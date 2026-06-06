@@ -1,6 +1,6 @@
 # 🧾 Auto-Input XML Pajak Coretax
 
-**Versi:** 1.2.3  
+**Versi:** 1.2.3a  
 **Bahasa:** Python 3  
 **Platform:** Windows (wajib, karena menggunakan `xlwings` dengan Microsoft Excel)
 
