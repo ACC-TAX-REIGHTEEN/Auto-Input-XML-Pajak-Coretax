@@ -1,10 +1,31 @@
-import pandas as pd
 import os
+import configparser
+import pandas as pd
 from openpyxl.utils import get_column_letter
+
+def read_config():
+    config = configparser.ConfigParser()
+    config_file = 'config.conf'
+    
+    if os.path.exists(config_file):
+        config.read(config_file, encoding='utf-8')
+    else:
+        print(f"--> Peringatan: File {config_file} tidak ditemukan. Menggunakan nilai default.")
+        
+    return config
 
 def olah_data_faktur_autofit():
     file_sumber = 'AccCtxFaktur_temp.xlsx'
     file_tujuan = 'MkNwFile_temp.xlsx'
+
+    config = read_config()
+    
+    dat_jenis_faktur = config.get('DATA', 'dat_jenis_faktur', fallback='Normal')
+    dat_kode_transaksi = config.get('DATA', 'dat_kode_transaksi', fallback='04')
+    dat_keterangan_tambahan = config.get('DATA', 'dat_keterangan_tambahan', fallback='')
+    dat_dokumen_pendukung = config.get('DATA', 'dat_dokumen_pendukung', fallback='')
+    dat_cap_fasilitas = config.get('DATA', 'dat_cap_fasilitas', fallback='')
+    dat_id_tku_penjual = config.get('DATA', 'dat_id_tku_penjual', fallback='12345')
 
     print("--> Sedang membaca data sumber...")
     
@@ -21,14 +42,14 @@ def olah_data_faktur_autofit():
 
     df_target['Baris'] = range(1, len(df_sumber) + 1)
     df_target['Tanggal Faktur'] = df_sumber['TGL'].dt.strftime('%d/%m/%Y')
-    df_target['Jenis Faktur'] = 'Normal'
-    df_target['Kode Transaksi'] = '04'
-    df_target['Keterangan Tambahan'] = ''
-    df_target['Dokumen Pendukung'] = ''
+    df_target['Jenis Faktur'] = dat_jenis_faktur
+    df_target['Kode Transaksi'] = dat_kode_transaksi
+    df_target['Keterangan Tambahan'] = dat_keterangan_tambahan
+    df_target['Dokumen Pendukung'] = dat_dokumen_pendukung
     df_target['Period Dok Pendukung'] = df_sumber['TGL'].dt.strftime('%m%Y')
     df_target['Referensi'] = df_sumber['REFERENSI']
-    df_target['Cap Fasilitas'] = ''
-    df_target['ID TKU Penjual'] = '#GANTI INI DENGAN KODE PENJUAL'
+    df_target['Cap Fasilitas'] = dat_cap_fasilitas
+    df_target['ID TKU Penjual'] = dat_id_tku_penjual
     df_target['NPWP/NIK Pembeli'] = df_sumber['NPWP'].fillna('')
 
     def cek_jenis_id(npwp):
@@ -49,7 +70,7 @@ def olah_data_faktur_autofit():
         elif jenis_id == 'TIN':
             return '-'
         else:
-            return '' 
+            return ''
 
     df_target['Nomor Dokumen Pembeli'] = df_target['Jenis ID Pembeli'].apply(isi_nomor_dokumen)
     df_target['Nama Pembeli'] = df_sumber['NAMA']
@@ -70,7 +91,7 @@ def olah_data_faktur_autofit():
 
         for column in worksheet.columns:
             max_length = 0
-            column_letter = get_column_letter(column[0].column) 
+            column_letter = get_column_letter(column[0].column)
             
             for cell in column:
                 try:
