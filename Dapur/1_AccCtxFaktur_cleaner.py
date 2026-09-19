@@ -87,7 +87,6 @@ def bersihkan_data_faktur_final(input_file, output_file):
             df_bersih[col] = df_bersih[col].str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
             df_bersih[col] = pd.to_numeric(df_bersih[col], errors='coerce').fillna(0)
 
-    # C. Buat IDTKU
     if 'NPWP' in df_bersih.columns:
         def buat_idtku(row):
             npwp = str(row['NPWP']).strip()
