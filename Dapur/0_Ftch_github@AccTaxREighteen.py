@@ -16,7 +16,9 @@ FILES_TO_UPDATE = {
     "Helper_842100.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/Helper_842100.txt",
     "Helper_A.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/Helper_A.txt",
     "Helper_B.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/Helper_B.txt",
-    "Helper_Del.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/Helper_Del.txt"
+    "Helper_Del.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/Helper_Del.txt",
+    "KTP-OTH.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/KTP-OTH.txt",
+    "KTP.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/KTP.txt"
 }
 
 def get_git_token():
