@@ -9,7 +9,7 @@ FOLDER_DAPUR = "Dapur"
 INPUT_FILES = ["Faktur.xls", "EFaktur.xls"]
 
 REQUIRED_DAPUR_FILES = [
-	"0_Ftch_github@AccTaxREighteen.py",
+    "0_Ftch_github@AccTaxREighteen.py",
     "1_AccDiscFaktur_cleaner.py",
     "2_AccDiscEFaktur_cleaner.py",
     "3_DiscMkNwFile.py",
@@ -39,7 +39,7 @@ REQUIRED_DAPUR_FILES = [
 ]
 
 EXECUTION_ORDER = [
-	"0_Ftch_github@AccTaxREighteen.py",
+    "0_Ftch_github@AccTaxREighteen.py",
     "1_AccDiscFaktur_cleaner.py",
     "2_AccDiscEFaktur_cleaner.py",
     "3_DiscMkNwFile.py",
@@ -64,9 +64,9 @@ def log(message):
     print(f"--> {message}")
 
 def error_exit(message):
-    print(f"\n[ERROR] {message}")
-    print("Proses Dibatalkan.")
-    input("\nTekan Enter untuk keluar...")
+    print(f"--> [ERROR] {message}")
+    print("--> Proses Dibatalkan.")
+    input("\n--> Tekan Enter untuk keluar...")
     sys.exit(1)
 
 def get_default_filename():
@@ -80,9 +80,8 @@ def get_default_filename():
 
 def generate_filename_from_data(date_val):
     dt = None
-    
     try:
-        if isinstance(date_val, datetime.datetime) or isinstance(date_val, datetime.date):
+        if isinstance(date_val, (datetime.datetime, datetime.date)):
             dt = date_val
         elif isinstance(date_val, str):
             parts = date_val.split('/')
@@ -99,7 +98,6 @@ def generate_filename_from_data(date_val):
             1: "JAN", 2: "FEB", 3: "MAR", 4: "APR", 5: "MEI", 6: "JUN",
             7: "JUL", 8: "AGU", 9: "SEP", 10: "OKT", 11: "NOV", 12: "DES"
         }
-        
         year_short = dt.year % 100
         return f"XML-DISC-{dt.day:02d}-{months[dt.month]}-{year_short}"
     else:
@@ -123,7 +121,7 @@ def force_harga_satuan_to_number(raw_data):
     cleaned_data = []
     for row in raw_data:
         row_list = list(row)
-        val = row_list[5] 
+        val = row_list[5]
         try:
             if val is not None:
                 if isinstance(val, str):
@@ -138,7 +136,7 @@ def force_kode_barang_to_string(raw_data):
     cleaned_data = []
     for row in raw_data:
         row_list = list(row)
-        val = row_list[2] 
+        val = row_list[2]
         if val is not None:
             if isinstance(val, float):
                 if val.is_integer():
@@ -181,7 +179,7 @@ def main():
             error_exit(f"Gagal menyalin file: {e}")
 
         log("Mulai menjalankan script pengolahan data...")
-        python_exe = sys.executable 
+        python_exe = sys.executable
 
         for script in EXECUTION_ORDER:
             script_path = os.path.join(dapur_path, script)
@@ -190,25 +188,25 @@ def main():
                 subprocess.run([python_exe, script], cwd=dapur_path, check=True)
             except subprocess.CalledProcessError:
                 error_exit(f"Gagal saat menjalankan {script}. Proses berhenti.")
-        
+
         audit_file_name = "AUDIT_DATA_CTX.xlsx"
         audit_src = os.path.join(dapur_path, audit_file_name)
-        audit_dst = os.path.join(base_dir, audit_file_name)
+        audit_dst_temp = os.path.join(base_dir, audit_file_name)
 
         if os.path.exists(audit_src):
             try:
-                shutil.copy2(audit_src, audit_dst)
-                log(f"File audit '{audit_file_name}' ditemukan dan disalin ke folder utama.")
+                shutil.copy2(audit_src, audit_dst_temp)
+                log(f"File audit '{audit_file_name}' ditemukan dan disalin sementara ke folder utama.")
             except Exception:
                 pass
-        
+
         source_file = os.path.join(dapur_path, "MkNwFile_temp.xlsx")
         if not os.path.exists(source_file):
             error_exit("File 'MkNwFile_temp.xlsx' tidak terbentuk setelah proses.")
 
         template_ori = os.path.join(dapur_path, "Template_v.1.6.1.xlsx")
         template_temp = os.path.join(dapur_path, "TEMPLATE_temp.xlsx")
-        
+
         try:
             shutil.copy2(template_ori, template_temp)
         except Exception as e:
@@ -230,9 +228,9 @@ def main():
             sh_tgt_faktur = wb_target.sheets['Faktur']
 
             last_row_src_faktur = sh_src_faktur.range('A' + str(sh_src_faktur.cells.last_cell.row)).end('up').row
-            
+
             if last_row_src_faktur >= 2:
-                data_count = last_row_src_faktur - 1 
+                data_count = last_row_src_faktur - 1
                 raw_data_faktur = sh_src_faktur.range(f'A2:R{last_row_src_faktur}').options(ndim=2).value
 
                 try:
@@ -247,11 +245,11 @@ def main():
                 final_data_faktur = clean_id_tku_penjual(raw_data_faktur)
 
                 rows_to_insert = data_count - 1
-                anchor_row = 5 
-                
+                anchor_row = 5
+
                 if rows_to_insert > 0:
                     sh_tgt_faktur.range(f'{anchor_row}:{anchor_row + rows_to_insert - 1}').insert('down')
-                
+
                 sh_tgt_faktur.range('A4').value = final_data_faktur
 
             log("Mengolah Sheet: DetailFaktur")
@@ -289,7 +287,7 @@ def main():
             app.quit()
 
         log("Melakukan pembersihan file...")
-        
+
         final_name_xlsx = f"{final_filename_base}.xlsx"
         final_path = os.path.join(base_dir, final_name_xlsx)
 
@@ -300,6 +298,19 @@ def main():
             log(f"File hasil akhir disimpan sebagai: {final_name_xlsx}")
         else:
             error_exit("Gagal menemukan file hasil akhir TEMPLATE_temp.xlsx")
+
+        if os.path.exists(audit_dst_temp):
+            date_suffix = final_filename_base.replace("XML-DISC-", "")
+            final_audit_name = f"AUDIT_DATA_CTX-DISC-{date_suffix}.xlsx"
+            final_audit_path = os.path.join(base_dir, final_audit_name)
+
+            try:
+                if os.path.exists(final_audit_path):
+                    os.remove(final_audit_path)
+                shutil.move(audit_dst_temp, final_audit_path)
+                log(f"File audit berhasil dinamai: {final_audit_name}")
+            except Exception as e:
+                log(f"[PERINGATAN] Gagal mengganti nama file audit: {e}")
 
         for temp_file in TEMP_FILES_TO_REMOVE:
             t_path = os.path.join(dapur_path, temp_file)
@@ -319,7 +330,7 @@ def main():
     except Exception as general_error:
         error_exit(f"Terjadi kesalahan fatal yang tidak terduga: {general_error}")
 
-    input("\nTekan Enter untuk keluar. Pesan moral: Jangan pernah percaya kepada siapapun, bahkan jika itu dirimu sendiri. Selalu lakukan cek ulang, karena mesin juga bisa salah.")
+    input("\n--> Tekan Enter untuk keluar...")
 
 if __name__ == "__main__":
     main()
