@@ -18,7 +18,10 @@ REQUIRED_DAPUR_FILES = [
     "6_CpData2DtlFktr.py",
     "7_HelperDate.py",
     "8_HelperKTPOth.py",
+    "9_EndReCalcRecon.py",
     "__init__.py",
+    "Helper_000000.txt",
+    "Helper_120101.txt",
     "Helper_160100.txt",
     "Helper_200104.txt",
     "Helper_340300.txt",
@@ -44,13 +47,15 @@ EXECUTION_ORDER = [
     "5_CpData2Fktr.py",
     "6_CpData2DtlFktr.py",
     "7_HelperDate.py",
-    "8_HelperKTPOth.py"
+    "8_HelperKTPOth.py",
+    "9_EndReCalcRecon.py"
 ]
 
 TEMP_FILES_TO_REMOVE = [
     "MkNwFile_temp.xlsx",
     "AccCtxFaktur_temp.xlsx",
-    "AccEFaktur_temp.xlsx"
+    "AccEFaktur_temp.xlsx",
+    "AUDIT_DATA_CTX.xlsx"
 ]
 
 def log(message):
@@ -183,6 +188,16 @@ def main():
             except subprocess.CalledProcessError:
                 error_exit(f"Gagal saat menjalankan {script}. Proses berhenti.")
 
+        audit_file_name = "AUDIT_DATA_CTX.xlsx"
+        audit_src = os.path.join(dapur_path, audit_file_name)
+        audit_dst = os.path.join(base_dir, audit_file_name)
+
+        if os.path.exists(audit_src):
+            try:
+                shutil.copy2(audit_src, audit_dst)
+                log(f"File audit '{audit_file_name}' ditemukan dan disalin ke folder utama.")
+            except Exception:
+                pass
         source_file = os.path.join(dapur_path, "MkNwFile_temp.xlsx")
         if not os.path.exists(source_file):
             error_exit("File 'MkNwFile_temp.xlsx' tidak terbentuk setelah proses.")
@@ -287,7 +302,7 @@ def main():
             if os.path.exists(t_path):
                 try:
                     os.remove(t_path)
-                except:
+                except Exception:
                     pass
 
         for f in INPUT_FILES:
