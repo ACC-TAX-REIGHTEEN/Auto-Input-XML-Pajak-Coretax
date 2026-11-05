@@ -199,8 +199,8 @@ def jalankan_audit_coretax():
     if cek_ref_sop and 'Referensi' in df_detail.columns and 'Tanggal Faktur' in df_detail.columns:
         print("--> Mengecek Referensi & Tanggal Faktur untuk deteksi nota yang sudah patuh SOP pisah nota...")
         
-        group_ref = df_detail.groupby(['Referensi', 'Tanggal Faktur'])[col_target]
-        nota_semua_nol = group_ref.transform(lambda s: (s == 0).all())
+        group_ref = df_detail.groupby(['Referensi', 'Tanggal Faktur'], dropna=False)[col_target]
+        nota_semua_nol = group_ref.transform(lambda s: (s == 0).all()).fillna(False).astype(bool)
         
         jumlah_nota_sop = df_detail[nota_semua_nol]['Referensi'].nunique()
         baris_keluar = nota_semua_nol.sum()
