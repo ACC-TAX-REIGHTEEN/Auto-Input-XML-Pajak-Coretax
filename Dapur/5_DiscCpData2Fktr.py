@@ -3,23 +3,33 @@ import configparser
 import pandas as pd
 from openpyxl.utils import get_column_letter
 
+
+def tentukan_engine_excel():
+    try:
+        import calamine
+        return 'calamine'
+    except ImportError:
+        return 'openpyxl'
+
+
 def read_config():
     config = configparser.ConfigParser()
     config_file = 'config.conf'
-    
+
     if os.path.exists(config_file):
         config.read(config_file, encoding='utf-8')
     else:
         print(f"--> Peringatan: File {config_file} tidak ditemukan. Menggunakan nilai default.")
-        
+
     return config
+
 
 def olah_data_faktur_autofit():
     file_sumber = 'AccCtxFaktur_temp.xlsx'
     file_tujuan = 'MkNwFile_temp.xlsx'
 
     config = read_config()
-    
+
     dat_jenis_faktur = config.get('DATA', 'dat_jenis_faktur', fallback='Normal')
     dat_kode_transaksi = config.get('DATA', 'dat_kode_transaksi', fallback='04')
     dat_keterangan_tambahan = config.get('DATA', 'dat_keterangan_tambahan', fallback='')
@@ -28,9 +38,17 @@ def olah_data_faktur_autofit():
     dat_id_tku_penjual = config.get('DATA', 'dat_id_tku_penjual', fallback='12345')
 
     print("--> Sedang membaca data sumber...")
-    
+
+    engine_excel = tentukan_engine_excel()
+    print(f"--> [INFO] Engine pembaca Excel yang digunakan: '{engine_excel}'")
+
     try:
-        df_sumber = pd.read_excel(file_sumber, sheet_name=0, dtype={'NPWP': str, 'IDTKU': str})
+        df_sumber = pd.read_excel(
+            file_sumber,
+            sheet_name=0,
+            dtype={'NPWP': str, 'IDTKU': str},
+            engine=engine_excel
+        )
     except FileNotFoundError:
         print(f"--> Error: File {file_sumber} tidak ditemukan.")
         return
@@ -86,26 +104,27 @@ def olah_data_faktur_autofit():
     with pd.ExcelWriter(file_tujuan, engine='openpyxl', mode=mode, if_sheet_exists=if_sheet_exists) as writer:
         sheet_name = 'Faktur'
         df_target.to_excel(writer, sheet_name=sheet_name, index=False)
-        
+
         worksheet = writer.sheets[sheet_name]
 
         for column in worksheet.columns:
             max_length = 0
             column_letter = get_column_letter(column[0].column)
-            
+
             for cell in column:
                 try:
                     if cell.value:
                         cell_length = len(str(cell.value))
                         if cell_length > max_length:
                             max_length = cell_length
-                except:
+                except Exception:
                     pass
-            
+
             adjusted_width = (max_length + 2)
             worksheet.column_dimensions[column_letter].width = adjusted_width
 
     print("--> Selesai! Data berhasil disalin dan kolom sudah di-autofit.")
+
 
 if __name__ == "__main__":
     olah_data_faktur_autofit()
