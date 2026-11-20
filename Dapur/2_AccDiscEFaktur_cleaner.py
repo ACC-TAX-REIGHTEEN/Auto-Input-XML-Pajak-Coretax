@@ -1,8 +1,24 @@
 import configparser
 import os
+import warnings
 import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
+
+warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings('ignore', message='.*engine.*deprecated.*')
+warnings.filterwarnings('ignore', message='.*calamine.*')
+
+
+def tentukan_engine_excel(file_path):
+    try:
+        import calamine
+        return 'calamine'
+    except ImportError:
+        ext = os.path.splitext(str(file_path))[1].lower()
+        if ext == '.xls':
+            return 'xlrd'
+        return 'openpyxl'
 
 
 def baca_pengaturan_pembagi(config_file="config.conf"):
@@ -18,6 +34,9 @@ def baca_pengaturan_pembagi(config_file="config.conf"):
 
 def proses_data_faktur_dynamic(input_file, output_file):
     print(f"--> Mulai memproses file: {input_file}")
+
+    engine_excel = tentukan_engine_excel(input_file)
+    print(f"--> [INFO] Engine pembaca Excel yang digunakan: '{engine_excel}'")
 
     pembagi = baca_pengaturan_pembagi("config.conf")
     if pembagi == 1.11:
@@ -71,7 +90,7 @@ def proses_data_faktur_dynamic(input_file, output_file):
 
     print("--> Sedang memindai posisi kolom...")
     try:
-        df_raw = pd.read_excel(input_file, header=None, nrows=20, dtype=str)
+        df_raw = pd.read_excel(input_file, header=None, nrows=20, dtype=str, engine=engine_excel)
     except Exception:
         try:
             df_raw = pd.read_csv(input_file, header=None, nrows=20, dtype=str)
@@ -113,6 +132,7 @@ def proses_data_faktur_dynamic(input_file, output_file):
             header=None,
             skiprows=max_header_row_idx + 1,
             dtype=str,
+            engine=engine_excel,
         )
     except Exception:
         df_full = pd.read_csv(
