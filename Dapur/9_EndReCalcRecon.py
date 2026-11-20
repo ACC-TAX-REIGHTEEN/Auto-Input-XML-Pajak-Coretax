@@ -16,7 +16,7 @@ def tentukan_engine_excel():
 def clean_config_val(raw_val):
     if raw_val is None:
         return ""
-    cleaned = str(raw_val).split(chr(35))[0].strip()
+    cleaned = str(raw_val).split('#')[0].strip()
     return cleaned
 
 
