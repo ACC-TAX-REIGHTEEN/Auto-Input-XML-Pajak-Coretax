@@ -239,7 +239,7 @@ def proses_data_faktur_dynamic(input_file, output_file):
             try:
                 if cell.value is not None:
                     if header_text in cols_angka:
-                        cell.number_format = chr(35) + ",##0.00"
+                        cell.number_format = "#,##0.00"
 
                     val_len = len(str(cell.value))
                     if val_len > max_length:
