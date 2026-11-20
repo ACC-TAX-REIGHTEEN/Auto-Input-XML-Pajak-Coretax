@@ -1,5 +1,6 @@
 import os
 import configparser
+import datetime
 import pandas as pd
 from openpyxl.utils import get_column_letter
 
@@ -27,7 +28,8 @@ def load_audit_config(config_path='config.conf'):
             'aud': 'Ya',
             'aud_sheet': 'DetailFaktur',
             'aud_col': 'Harga Satuan',
-            'aud_col_val': '0'
+            'aud_col_val': '0',
+            'aud_col_ref': 'Tidak'
         }
 
     config.read(config_path, encoding='utf-8')
@@ -40,36 +42,97 @@ def load_audit_config(config_path='config.conf'):
         'aud': clean_config_val(config.get('AUDIT', 'aud', fallback='Tidak')),
         'aud_sheet': clean_config_val(config.get('AUDIT', 'aud_sheet', fallback='DetailFaktur')),
         'aud_col': clean_config_val(config.get('AUDIT', 'aud_col', fallback='Harga Satuan')),
-        'aud_col_val': clean_config_val(config.get('AUDIT', 'aud_col_val', fallback='0'))
+        'aud_col_val': clean_config_val(config.get('AUDIT', 'aud_col_val', fallback='0')),
+        'aud_col_ref': clean_config_val(config.get('AUDIT', 'aud_col_ref', fallback='Tidak'))
     }
 
 
-def klasifikasi_temuan(row, aud_col):
+def format_tanggal_indonesia(val):
+    if pd.isna(val) or val is None or str(val).strip() == '':
+        return ''
+
+    dt = None
+    if isinstance(val, (datetime.datetime, datetime.date)):
+        dt = val
+    else:
+        val_str = str(val).strip()
+        try:
+            parts = val_str.split('/')
+            if len(parts) == 3:
+                dt = datetime.date(int(parts[2]), int(parts[1]), int(parts[0]))
+        except Exception:
+            pass
+
+        if dt is None:
+            try:
+                dt = pd.to_datetime(val_str, dayfirst=True)
+            except Exception:
+                return val_str
+
+    if dt:
+        bulan_indo = {
+            1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "Mei", 6: "Jun",
+            7: "Jul", 8: "Agu", 9: "Sep", 10: "Okt", 11: "Nov", 12: "Des"
+        }
+        return f"{dt.day} {bulan_indo.get(dt.month, '')} {dt.year}"
+
+    return str(val)
+
+
+def konversi_ke_angka_aman(series):
+    def _bersihkan(val):
+        if pd.isna(val) or val is None:
+            return 0.0
+        if isinstance(val, (int, float)):
+            return float(val)
+        val_str = str(val).strip()
+        if val_str == '':
+            return 0.0
+        if '.' in val_str and ',' in val_str:
+            val_str = val_str.replace('.', '').replace(',', '.')
+        elif ',' in val_str:
+            val_str = val_str.replace(',', '.')
+        try:
+            return float(val_str)
+        except ValueError:
+            return 0.0
+
+    return series.apply(_bersihkan)
+
+
+def klasifikasi_temuan_detail(row, aud_col, cek_ref_sop):
     alasan = []
-    status_coretax = "DITERIMA (BERISIKO SOP)"
+    status_coretax = "DITERIMA (BERISIKO SOP - NOTA CAMPUR)"
 
     harga_target = float(row.get(aud_col, 0))
     dpp = float(row.get('DPP', 0))
     ppn = float(row.get('PPN', 0))
     diskon = float(row.get('Total Diskon', 0))
     qty = float(row.get('Jumlah Barang Jasa', 0))
-
-    if harga_target == 0:
-        alasan.append(f"{aud_col} bernilai 0 (Nota barang bonus/sample harus dipisah)")
-    elif harga_target < 0:
-        alasan.append(f"{aud_col} bernilai negatif ({harga_target})")
-        status_coretax = "DITOLAK CORETAX"
+    is_nota_murni_nol = bool(row.get('_IS_NOTA_MURNI_NOL', False))
 
     if dpp < 0 or ppn < 0:
-        alasan.append(f"Nilai DPP ({dpp:,.2f}) atau PPN ({ppn:,.2f}) MINUS akibat Diskon ({diskon:,.2f}) > Harga Total")
+        alasan.append(f"Nilai DPP ({dpp:,.2f}) atau PPN ({ppn:,.2f}) MINUS akibat Diskon ({diskon:,.2f}) > Total")
+        status_coretax = "DITOLAK CORETAX"
+
+    if harga_target < 0:
+        alasan.append(f"{aud_col} bernilai negatif ({harga_target})")
         status_coretax = "DITOLAK CORETAX"
 
     if qty <= 0:
         alasan.append(f"Jumlah Barang Jasa tidak valid ({qty})")
         status_coretax = "DITOLAK CORETAX"
 
+    if harga_target == 0 and status_coretax != "DITOLAK CORETAX":
+        if cek_ref_sop and is_nota_murni_nol:
+            status_coretax = "PATUH SOP (NOTA KHUSUS BONUS/SAMPLE)"
+            alasan.append(f"{aud_col} bernilai 0 (Sudah dipisah ke nota khusus sesuai SOP)")
+        else:
+            status_coretax = "DITERIMA (BERISIKO SOP - NOTA CAMPUR)"
+            alasan.append(f"{aud_col} bernilai 0 (Wajib dipisah: tercampur dengan barang lain dalam satu nota)")
+
     if not alasan:
-        alasan.append("Memenuhi kriteria filter pengecekan data non-nol")
+        alasan.append("Sesuai kriteria filter data")
         status_coretax = "NORMAL / SESUAI FILTER"
 
     return pd.Series([status_coretax, " | ".join(alasan)])
@@ -111,8 +174,9 @@ def jalankan_audit_coretax():
     sheet_target = cfg['aud_sheet']
     col_target = cfg['aud_col']
     val_mode = cfg['aud_col_val']
+    cek_ref_sop = cfg['aud_col_ref'].lower() == 'ya'
 
-    print(f"--> Konfigurasi Aktif : Sheet='{sheet_target}' | Kolom='{col_target}' | Mode Nilai='{val_mode}'")
+    print(f"--> Konfigurasi Aktif : Sheet='{sheet_target}' | Kolom='{col_target}' | Mode Nilai='{val_mode}' | Filter Ref SOP='{cfg['aud_col_ref']}'")
 
     if not os.path.exists(file_input):
         print(f"--> [ERROR] File '{file_input}' tidak ditemukan! Pastikan proses sebelumnya sudah dijalankan.")
@@ -135,9 +199,36 @@ def jalankan_audit_coretax():
     kolom_numerik = [col_target, 'Jumlah Barang Jasa', 'Total Diskon', 'DPP', 'DPP Nilai Lain', 'PPN']
     for kn in kolom_numerik:
         if kn in df_detail.columns:
-            if df_detail[kn].dtype == object:
-                df_detail[kn] = df_detail[kn].astype(str).str.strip().str.replace(',', '.', regex=False)
-            df_detail[kn] = pd.to_numeric(df_detail[kn], errors='coerce').fillna(0.0)
+            df_detail[kn] = konversi_ke_angka_aman(df_detail[kn])
+
+    try:
+        df_faktur = pd.read_excel(file_input, sheet_name='Faktur', engine=excel_reader_engine)
+        df_faktur.columns = [str(c).strip() for c in df_faktur.columns]
+
+        if 'Tanggal Faktur' in df_faktur.columns:
+            df_faktur['Tanggal Faktur'] = df_faktur['Tanggal Faktur'].apply(format_tanggal_indonesia)
+
+        df_detail['Baris_Key'] = pd.to_numeric(df_detail['Baris'], errors='coerce').fillna(-1).astype(int)
+        df_faktur['Baris_Key'] = pd.to_numeric(df_faktur['Baris'], errors='coerce').fillna(-2).astype(int)
+
+        kolom_info_faktur = ['Baris_Key', 'Referensi', 'Tanggal Faktur', 'Nama Pembeli', 'NPWP/NIK Pembeli']
+        kolom_tersedia = [k for k in kolom_info_faktur if k in df_faktur.columns]
+
+        df_detail = pd.merge(
+            df_detail,
+            df_faktur[kolom_tersedia].drop_duplicates(subset=['Baris_Key']),
+            on='Baris_Key',
+            how='left'
+        )
+        df_detail.drop(columns=['Baris_Key'], inplace=True)
+    except Exception as e:
+        print(f"--> [INFO] Sheet 'Faktur' tidak dapat digabungkan ({e}). Menampilkan data detail saja.")
+
+    if 'Referensi' in df_detail.columns:
+        group_ref = df_detail.groupby('Referensi', dropna=False)[col_target]
+        df_detail['_IS_NOTA_MURNI_NOL'] = group_ref.transform(lambda s: (s == 0).all()).fillna(False).astype(bool)
+    else:
+        df_detail['_IS_NOTA_MURNI_NOL'] = False
 
     if val_mode == '0':
         kondisi_filter = (df_detail[col_target] == 0) | (df_detail.get('DPP', 0) < 0) | (df_detail.get('PPN', 0) < 0)
@@ -156,58 +247,42 @@ def jalankan_audit_coretax():
 
     df_temuan = df_detail[kondisi_filter].copy()
 
-    try:
-        df_faktur = pd.read_excel(file_input, sheet_name='Faktur', engine=excel_reader_engine)
-        df_faktur.columns = [str(c).strip() for c in df_faktur.columns]
-
-        df_temuan['Baris_Key'] = pd.to_numeric(df_temuan['Baris'], errors='coerce').fillna(-1).astype(int)
-        df_faktur['Baris_Key'] = pd.to_numeric(df_faktur['Baris'], errors='coerce').fillna(-2).astype(int)
-
-        kolom_info_faktur = ['Baris_Key', 'Referensi', 'Tanggal Faktur', 'Nama Pembeli', 'NPWP/NIK Pembeli']
-        kolom_tersedia = [k for k in kolom_info_faktur if k in df_faktur.columns]
-
-        df_temuan = pd.merge(
-            df_temuan,
-            df_faktur[kolom_tersedia].drop_duplicates(subset=['Baris_Key']),
-            on='Baris_Key',
-            how='left'
-        )
-
-        df_temuan = df_temuan.drop(columns=['Baris_Key'])
-    except Exception as e:
-        print(f"--> [INFO] Sheet 'Faktur' tidak dapat digabungkan ({e}). Menampilkan detail saja.")
-
     if not df_temuan.empty:
         df_temuan[['STATUS_CORETAX', 'CATATAN_AUDIT']] = df_temuan.apply(
-            lambda r: klasifikasi_temuan(r, col_target), axis=1
+            lambda r: klasifikasi_temuan_detail(r, col_target, cek_ref_sop), axis=1
         )
 
         kolom_prioritas = ['Baris', 'Referensi', 'Tanggal Faktur', 'Nama Pembeli', 'STATUS_CORETAX', 'CATATAN_AUDIT']
         kolom_awal = [c for c in kolom_prioritas if c in df_temuan.columns]
-        kolom_sisa = [c for c in df_temuan.columns if c not in kolom_awal]
+        kolom_sisa = [c for c in df_temuan.columns if c not in kolom_awal and c != '_IS_NOTA_MURNI_NOL']
         df_temuan = df_temuan[kolom_awal + kolom_sisa]
+
+    if '_IS_NOTA_MURNI_NOL' in df_detail.columns:
+        df_detail.drop(columns=['_IS_NOTA_MURNI_NOL'], inplace=True)
 
     total_baris_detail = len(df_detail)
     total_baris_temuan = len(df_temuan)
     faktur_terdampak = df_temuan['Baris'].nunique() if not df_temuan.empty else 0
     jml_ditolak = len(df_temuan[df_temuan['STATUS_CORETAX'] == 'DITOLAK CORETAX']) if not df_temuan.empty else 0
-    jml_peringatan = len(df_temuan[df_temuan['STATUS_CORETAX'] == 'DITERIMA (BERISIKO SOP)']) if not df_temuan.empty else 0
+    jml_campur = len(df_temuan[df_temuan['STATUS_CORETAX'] == 'DITERIMA (BERISIKO SOP - NOTA CAMPUR)']) if not df_temuan.empty else 0
+    jml_patuh_sop = len(df_temuan[df_temuan['STATUS_CORETAX'] == 'PATUH SOP (NOTA KHUSUS BONUS/SAMPLE)']) if not df_temuan.empty else 0
 
     print("--> -----------------------------------------------------")
     print(f"--> Filter Audit               : {deskripsi_mode}")
     print(f"--> Total Baris Diperiksa      : {total_baris_detail} baris")
-    print(f"--> Total Temuan Baris         : {total_baris_temuan} baris (dalam {faktur_terdampak} Nomor Faktur/Baris)")
-    print(f"-->   - Pasti Ditolak Coretax  : {jml_ditolak} baris (DPP/PPN Minus atau Harga Negatif)")
-    print(f"-->   - Lolos Tapi Salah SOP   : {jml_peringatan} baris (Harga Satuan 0, Diskon 0)")
+    print(f"--> Total Temuan Terjaring     : {total_baris_temuan} baris (dalam {faktur_terdampak} Nomor Faktur/Baris)")
+    print(f"-->   - Pasti Ditolak CoreTax  : {jml_ditolak} baris (DPP/PPN Minus atau Qty Salah)")
+    print(f"-->   - Campur Nota Bermasalah : {jml_campur} baris (Harga 0 campur dengan barang lain)")
+    print(f"-->   - Nota Khusus Bonus (SOP): {jml_patuh_sop} baris (Sudah dipisah faktur sendiri)")
     print("--> -----------------------------------------------------")
 
     if not df_temuan.empty:
         print("--> SEKILAS DATA TEMUAN (Maks. 10 Baris Pertama):")
-        kolom_preview = [c for c in ['Baris', 'Referensi', 'Nama Barang/Jasa', col_target, 'Total Diskon', 'DPP', 'STATUS_CORETAX'] if c in df_temuan.columns]
+        kolom_preview = [c for c in ['Baris', 'Referensi', 'Tanggal Faktur', 'Nama Barang/Jasa', col_target, 'Total Diskon', 'DPP', 'STATUS_CORETAX'] if c in df_temuan.columns]
         print(f"--> {df_temuan[kolom_preview].head(10).to_string(index=False)}")
         print("--> -----------------------------------------------------")
     else:
-        print("--> [AMAN] Tidak ditemukan data anomali berdasarkan kriteria konfigurasi saat ini.")
+        print("--> [AMAN] Tidak ditemukan data anomali berdasarkan konfigurasi saat ini.")
 
     df_ringkasan = pd.DataFrame({
         'METRIK AUDIT': [
@@ -215,22 +290,26 @@ def jalankan_audit_coretax():
             'Sheet yang Diperiksa',
             'Kolom Acuan (aud_col)',
             'Kode Filter (aud_col_val)',
+            'Pengecekan SOP Pisah Nota (aud_col_ref)',
             'Total Baris Detail Faktur',
-            'Total Baris Temuan Audit',
-            'Jumlah Faktur (Nomor Baris) Terdampak',
-            'Jumlah Baris Pasti Ditolak Coretax (DPP/PPN Minus)',
-            'Jumlah Baris Rawan/Salah SOP (Harga Satuan = 0, DPP = 0)'
+            'Total Baris Temuan Terjaring',
+            'Jumlah Faktur Terdampak',
+            'Jumlah Baris Pasti Ditolak CoreTax (DPP/PPN Minus)',
+            'Jumlah Baris Campur Nota Bermasalah (Harga Satuan = 0 Campur)',
+            'Jumlah Baris Patuh SOP (Nota Khusus Bonus Murni)'
         ],
         'NILAI / HASIL': [
             file_input,
             sheet_target,
             col_target,
             f"{val_mode} ({deskripsi_mode})",
+            cfg['aud_col_ref'],
             total_baris_detail,
             total_baris_temuan,
             faktur_terdampak,
             jml_ditolak,
-            jml_peringatan
+            jml_campur,
+            jml_patuh_sop
         ]
     })
 
@@ -240,10 +319,12 @@ def jalankan_audit_coretax():
             Jumlah_Item_Bermasalah=('Nama Barang/Jasa', 'count'),
             Total_Diskon_Bermasalah=('Total Diskon', 'sum'),
             Total_DPP_Bermasalah=('DPP', 'sum'),
-            Status_Terparah=('STATUS_CORETAX', lambda x: 'DITOLAK CORETAX' if 'DITOLAK CORETAX' in x.values else 'DITERIMA (BERISIKO SOP)')
+            Status_Terparah=('STATUS_CORETAX', lambda x: 'DITOLAK CORETAX' if 'DITOLAK CORETAX' in x.values else (
+                'DITERIMA (BERISIKO SOP - NOTA CAMPUR)' if 'DITERIMA (BERISIKO SOP - NOTA CAMPUR)' in x.values else 'PATUH SOP (NOTA KHUSUS BONUS/SAMPLE)'
+            ))
         ).reset_index()
     else:
-        df_rekap_faktur = pd.DataFrame(columns=['Baris', 'Referensi', 'Status_Terparah'])
+        df_rekap_faktur = pd.DataFrame(columns=['Baris', 'Referensi', 'Tanggal Faktur', 'Status_Terparah'])
 
     try:
         with pd.ExcelWriter(file_output, engine='openpyxl', mode='w') as writer:
