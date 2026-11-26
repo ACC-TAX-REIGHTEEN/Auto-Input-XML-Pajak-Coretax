@@ -1,86 +1,197 @@
 import os
 import hashlib
 import configparser
+from urllib.parse import quote
 import requests
 
-FILES_TO_UPDATE = {
-    "Helper_000000.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/Helper_000000.txt",
-    "Helper_120101.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/Helper_120101.txt",
-    "Helper_160100.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/Helper_160100.txt",
-    "Helper_200104.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/Helper_200104.txt",
-    "Helper_340300.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/Helper_340300.txt",
-    "Helper_400800.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/Helper_400800.txt",
-    "Helper_401100.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/Helper_401100.txt",
-    "Helper_401300.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/Helper_401300.txt",
-    "Helper_830900.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/Helper_830900.txt",
-    "Helper_842100.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/Helper_842100.txt",
-    "Helper_A.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/Helper_A.txt",
-    "Helper_B.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/Helper_B.txt",
-    "Helper_Del.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/Helper_Del.txt",
-    "KTP-OTH.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/KTP-OTH.txt",
-    "KTP.txt": "https://raw.githubusercontent.com/ACC-TAX-REIGHTEEN/Helper-For-Tax-Automation/refs/heads/main/KTP.txt"
-}
+REPO_OWNER = "ACC-TAX-REIGHTEEN"
+REPO_NAME = "Helper-For-Tax-Automation"
+BRANCH = "main"
+API_BASE_URL = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents"
+REQUEST_TIMEOUT = (5, 15) 
 
-def get_git_token():
-    config_file = "config.conf"
+FILES_TO_UPDATE = (
+    "Helper_000000.txt",
+    "Helper_120101.txt",
+    "Helper_160100.txt",
+    "Helper_200104.txt",
+    "Helper_340300.txt",
+    "Helper_400800.txt",
+    "Helper_401100.txt",
+    "Helper_401300.txt",
+    "Helper_830900.txt",
+    "Helper_842100.txt",
+    "Helper_A.txt",
+    "Helper_B.txt",
+    "Helper_Del.txt",
+    "KTP-OTH.txt",
+    "KTP.txt",
+)
+
+
+def get_git_token(config_file="config.conf"):
     if not os.path.exists(config_file):
         return ""
-    
+
     config = configparser.ConfigParser()
-    config.read(config_file, encoding="utf-8")
-    
+    try:
+        config.read(config_file, encoding="utf-8-sig")
+    except (configparser.Error, OSError):
+        return ""
+
     if "GIT" in config and "git_token" in config["GIT"]:
-        return config["GIT"]["git_token"].strip()
-    
+        return config["GIT"]["git_token"].strip().strip('"').strip("'")
+
     return ""
 
-def check_internet():
+
+def get_git_blob_sha(data):
+    header = f"blob {len(data)}\0".encode("utf-8")
+    return hashlib.sha1(header + data).hexdigest()
+
+
+def get_local_blob_sha(filepath):
+    if not os.path.exists(filepath):
+        return None
     try:
-        requests.get("https://www.google.com", timeout=5)
+        with open(filepath, "rb") as f:
+            return get_git_blob_sha(f.read())
+    except OSError:
+        return None
+
+
+def write_file_atomic(filepath, data):
+    tmp_path = f"{filepath}.tmp"
+    try:
+        with open(tmp_path, "wb") as f:
+            f.write(data)
+        os.replace(tmp_path, filepath)
         return True
-    except:
+    except OSError:
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
         return False
 
-def get_bytes_md5(data):
-    return hashlib.md5(data).hexdigest()
+
+def is_rate_limited(response):
+    return (
+        response.status_code == 429
+        or (
+            response.status_code == 403
+            and (
+                response.headers.get("X-RateLimit-Remaining") == "0"
+                or "Retry-After" in response.headers
+            )
+        )
+    )
+
 
 def update_helpers():
     print("--> sedang menghubungkan")
-    if not check_internet():
-        return
 
     github_token = get_git_token()
-    headers = {}
-    if github_token:
-        headers["Authorization"] = f"token {github_token}"
+    if not github_token:
+        print("--> Dilewati: git_token tidak ditemukan di config.conf")
+        return
 
-    print("--> Sedang memperbarui data")
+    session = requests.Session()
+    session.headers.update({
+        "Authorization": f"Bearer {github_token}",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "AccTaxREighteen-HelperSync/1.0",
+    })
 
-    for local_file, url in FILES_TO_UPDATE.items():
+    try:
         try:
-            response = requests.get(url, headers=headers, timeout=10)
-            if response.status_code != 200:
+            meta_resp = session.get(
+                API_BASE_URL,
+                params={"ref": BRANCH},
+                headers={"Accept": "application/vnd.github+json"},
+                timeout=REQUEST_TIMEOUT,
+            )
+        except (requests.ConnectionError, requests.Timeout):
+            print("--> Mode offline / GitHub API tidak terjangkau, sinkronisasi dilewati")
+            return
+        except requests.RequestException:
+            return
+
+        if meta_resp.status_code == 401:
+            print("--> Gagal autentikasi (401): git_token tidak valid atau kedaluwarsa")
+            return
+        if is_rate_limited(meta_resp):
+            print("--> Batas kuota GitHub API tercapai, sinkronisasi dilewati")
+            return
+        if meta_resp.status_code in (403, 404):
+            print(f"--> Akses repositori ditolak/tidak ditemukan ({meta_resp.status_code}), periksa izin token")
+            return
+        if meta_resp.status_code != 200:
+            print(f"--> GitHub API mengembalikan status {meta_resp.status_code}, sinkronisasi dilewati")
+            return
+
+        try:
+            repo_items = meta_resp.json()
+        except ValueError:
+            print("--> Respons bukan JSON valid (kemungkinan terhalang proxy/captive portal)")
+            return
+
+        if not isinstance(repo_items, list):
+            return
+
+        whitelist = set(FILES_TO_UPDATE)
+        remote_files = {
+            item["name"]: item.get("sha", "")
+            for item in repo_items
+            if isinstance(item, dict)
+            and item.get("type") == "file"
+            and item.get("name") in whitelist
+        }
+
+        print("--> Sedang memperbarui data")
+        updated_count = 0
+
+        for local_file in FILES_TO_UPDATE:
+            remote_sha = remote_files.get(local_file)
+            if not remote_sha:
                 continue
 
-            remote_content = response.content
-            remote_md5 = get_bytes_md5(remote_content)
+            if get_local_blob_sha(local_file) == remote_sha:
+                continue
 
-            if os.path.exists(local_file):
-                with open(local_file, "rb") as f:
-                    local_content = f.read()
-                local_md5 = get_bytes_md5(local_content)
+            file_url = f"{API_BASE_URL}/{quote(local_file)}"
+            try:
+                file_resp = session.get(
+                    file_url,
+                    params={"ref": BRANCH},
+                    headers={"Accept": "application/vnd.github.raw+json"},
+                    timeout=REQUEST_TIMEOUT,
+                )
+            except requests.RequestException:
+                continue
 
-                if local_md5 != remote_md5:
-                    with open(local_file, "wb") as f:
-                        f.write(remote_content)
-            else:
-                with open(local_file, "wb") as f:
-                    f.write(remote_content)
+            if is_rate_limited(file_resp):
+                print("--> Kuota API habis di tengah proses, sisa file dilewati")
+                break
+            if file_resp.status_code != 200:
+                continue
 
-        except:
-            continue
+            remote_content = file_resp.content
 
-    print("--> Data telah diperbarui")
+            if get_git_blob_sha(remote_content) != remote_sha:
+                continue
+
+            if write_file_atomic(local_file, remote_content):
+                updated_count += 1
+
+        if updated_count > 0:
+            print(f"--> Data telah diperbarui ({updated_count} file diperbarui)")
+        else:
+            print("--> Data sudah versi terbaru")
+    finally:
+        session.close()
+
 
 if __name__ == "__main__":
     update_helpers()
